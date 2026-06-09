@@ -117,19 +117,19 @@ AWS EC2
 All AWS resources will use the following naming pattern:
 
 ```text
-tomas-cloud-dev-resource-name
+tomber-cloud-dev-resource-name
 ```
 
 Examples:
 
 ```text
-tomas-cloud-dev-vpc
-tomas-cloud-dev-ec2
-tomas-cloud-dev-rds
-tomas-cloud-dev-sqs
-tomas-cloud-dev-dlq
-tomas-cloud-dev-sg-web
-tomas-cloud-dev-sg-db
+tomber-cloud-dev-vpc
+tomber-cloud-dev-ec2
+tomber-cloud-dev-rds
+tomber-cloud-dev-sqs
+tomber-cloud-dev-dlq
+tomber-cloud-dev-sg-web
+tomber-cloud-dev-sg-db
 ```
 
 ## Branching Strategy

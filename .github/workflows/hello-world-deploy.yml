@@ -1,0 +1,66 @@
+name: Hello World Deploy
+
+on:
+  push:
+    branches:
+      - dev
+    paths:
+      - "services/hello-world/**"
+      - "ansible/**"
+      - ".github/workflows/hello-world-deploy.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build-push-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set image name
+        run: |
+          echo "IMAGE_NAME=ghcr.io/${GITHUB_REPOSITORY,,}/hello-world" >> "$GITHUB_ENV"
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build Docker image
+        run: |
+          docker build -t "$IMAGE_NAME:${GITHUB_SHA}" -t "$IMAGE_NAME:latest" services/hello-world
+
+      - name: Push Docker image
+        run: |
+          docker push "$IMAGE_NAME:${GITHUB_SHA}"
+          docker push "$IMAGE_NAME:latest"
+
+      - name: Install Ansible
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ansible
+
+      - name: Configure SSH key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/ec2_key.pem
+          chmod 600 ~/.ssh/ec2_key.pem
+          ssh-keyscan -H "${{ secrets.EC2_HOST }}" >> ~/.ssh/known_hosts
+
+      - name: Deploy container with Ansible
+        env:
+          GHCR_USERNAME: ${{ github.actor }}
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          ansible-playbook ansible/deploy-hello.yml \
+            -i "${{ secrets.EC2_HOST }}," \
+            -u "${{ secrets.EC2_USER }}" \
+            --private-key ~/.ssh/ec2_key.pem \
+            -e "image_name=$IMAGE_NAME:latest"

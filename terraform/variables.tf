@@ -21,3 +21,15 @@ variable "vpc_cidr" {
   type        = string
   default     = "10.0.0.0/16"
 }
+//////4////////////////
+variable "db_username" {
+  description = "Database admin username"
+  type        = string
+  default     = "cloudadmin"
+}
+
+variable "db_password" {
+  description = "Database admin password"
+  type        = string
+  sensitive   = true
+}
