@@ -1,5 +1,15 @@
 # Architecture
 
+## Project Approach
+
+This project follows **Approach B — Custom Application Track**.
+
+The application will be developed as a simple custom microservices system designed to demonstrate cloud engineering concepts, including infrastructure automation, containerized deployment, CI/CD, asynchronous communication, database integration, and security best practices.
+
+The main goal of the project is not to build a complex business application, but to demonstrate the correct use of AWS, Terraform, Docker, Ansible, GitHub Actions, RDS, and SQS in a cloud-native architecture.
+
+
+
 ## Overview
 
 This project is a simple cloud-based microservices application deployed on AWS.
