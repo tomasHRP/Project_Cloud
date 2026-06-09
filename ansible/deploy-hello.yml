@@ -1,0 +1,31 @@
+---
+- name: Deploy hello-world container
+  hosts: all
+  become: true
+
+  tasks:
+    - name: Install Docker
+      ansible.builtin.dnf:
+        name: docker
+        state: present
+
+    - name: Start and enable Docker
+      ansible.builtin.service:
+        name: docker
+        state: started
+        enabled: true
+
+    - name: Login to GitHub Container Registry
+      ansible.builtin.shell: docker login ghcr.io -u "{{ lookup('env', 'GHCR_USERNAME') }}" --password-stdin
+      args:
+        stdin: "{{ lookup('env', 'GHCR_TOKEN') }}"
+      no_log: true
+
+    - name: Pull hello-world image
+      ansible.builtin.shell: docker pull "{{ image_name }}"
+
+    - name: Remove old container if exists
+      ansible.builtin.shell: docker rm -f hello-world || true
+
+    - name: Run hello-world container
+      ansible.builtin.shell: docker run -d --name hello-world --restart unless-stopped -p 80:80 "{{ image_name }}"

@@ -28,3 +28,18 @@ output "db_security_group_id" {
   description = "Security group ID for the database tier"
   value       = aws_security_group.db.id
 }
+/////////////////4////////////////////////
+output "ec2_public_ip" {
+  description = "Public IP address of the EC2 application server"
+  value       = aws_instance.app.public_ip
+}
+
+output "rds_endpoint" {
+  description = "RDS PostgreSQL endpoint"
+  value       = aws_db_instance.postgres.endpoint
+}
+
+output "rds_database_name" {
+  description = "RDS database name"
+  value       = aws_db_instance.postgres.db_name
+}
