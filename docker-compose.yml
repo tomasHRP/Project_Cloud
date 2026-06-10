@@ -10,6 +10,12 @@ services:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cloudadmin -d cloudapp"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
 
   order-service:
     build:
@@ -22,14 +28,19 @@ services:
       DB_USER: cloudadmin
       DB_PASSWORD: cloudpassword
       AWS_REGION: us-east-1
-      SQS_QUEUE_URL: "https://sqs.us-east-1.amazonaws.com/796115667133/tomber-cloud-dev-orders-queue"
-      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
-      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
-      AWS_SESSION_TOKEN: ${AWS_SESSION_TOKEN}
+      LOCAL_MODE: "true"
+      SQS_QUEUE_URL: ""
     ports:
       - "5001:5001"
     depends_on:
-      - postgres
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5001/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
 
   api-gateway:
     build:
@@ -40,7 +51,14 @@ services:
     ports:
       - "8080:5000"
     depends_on:
-      - order-service
+      order-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5000/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
 
   worker-service:
     build:
@@ -53,14 +71,21 @@ services:
       DB_USER: cloudadmin
       DB_PASSWORD: cloudpassword
       AWS_REGION: us-east-1
-      SQS_QUEUE_URL: "https://sqs.us-east-1.amazonaws.com/796115667133/tomber-cloud-dev-orders-queue"
-      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
-      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
-      AWS_SESSION_TOKEN: ${AWS_SESSION_TOKEN}
+      LOCAL_MODE: "true"
+      SQS_QUEUE_URL: ""
     ports:
       - "5002:5002"
     depends_on:
-      - postgres
+      postgres:
+        condition: service_healthy
+      order-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5002/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
 
 volumes:
   postgres_data:

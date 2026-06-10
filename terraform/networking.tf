@@ -6,6 +6,7 @@ locals {
   name_prefix = "${var.project_name}-${var.environment}"
 }
 
+///////VPC////////////////////////
 resource "aws_vpc" "main" {
   cidr_block           = var.vpc_cidr
   enable_dns_support   = true
@@ -15,7 +16,9 @@ resource "aws_vpc" "main" {
     Name = "${local.name_prefix}-vpc"
   }
 }
+///////////////////////////////////
 
+//////Internet Gateway/////////////////
 resource "aws_internet_gateway" "main" {
   vpc_id = aws_vpc.main.id
 
@@ -23,7 +26,9 @@ resource "aws_internet_gateway" "main" {
     Name = "${local.name_prefix}-igw"
   }
 }
+///////////////////////////////////
 
+/////SUBNETS////////////////
 resource "aws_subnet" "public_1a" {
   vpc_id                  = aws_vpc.main.id
   cidr_block              = "10.0.1.0/24"
@@ -69,7 +74,9 @@ resource "aws_subnet" "private_1b" {
     Tier = "private"
   }
 }
+/////////////////////////////////
 
+/////route tables////////////////
 resource "aws_route_table" "public" {
   vpc_id = aws_vpc.main.id
 
@@ -111,7 +118,9 @@ resource "aws_route_table_association" "private_1b" {
   subnet_id      = aws_subnet.private_1b.id
   route_table_id = aws_route_table.private.id
 }
+////////////////////////////////////////
 
+//////Security Groups///////////////////////////////
 resource "aws_security_group" "web" {
   name        = "${local.name_prefix}-sg-web"
   description = "Security group for the web/application tier"
@@ -172,3 +181,4 @@ resource "aws_vpc_security_group_egress_rule" "db_all_outbound" {
   cidr_ipv4         = "0.0.0.0/0"
   ip_protocol       = "-1"
 }
+//////////////////////////////////////////////

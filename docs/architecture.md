@@ -1,334 +1,172 @@
 # Arquitetura
 
-## Abordagem do Projeto
-
-Este projeto segue a **Approach B — Custom Application Track**.
-
-A aplicação foi desenvolvida como um sistema simples de microserviços, com o objetivo de demonstrar conceitos fundamentais de Cloud Engineering, incluindo automação de infraestrutura, deploy com containers, CI/CD, comunicação assíncrona, integração com base de dados e boas práticas de segurança.
-
-O objetivo principal do projeto não é criar uma aplicação de negócio complexa, mas sim demonstrar a utilização correta de AWS, Terraform, Docker, Ansible, GitHub Actions, Amazon RDS, Amazon SQS e Amazon ECR numa arquitetura cloud-native.
-
 ## Visão Geral
 
-Este projeto consiste numa aplicação de microserviços alojada na AWS.
+Este projeto segue uma arquitetura distribuída baseada em microserviços.
 
-A aplicação corre em containers Docker numa instância EC2. A infraestrutura é criada através de Terraform, enquanto o deploy é automatizado com GitHub Actions e Ansible.
+A aplicação é composta por vários serviços independentes que comunicam entre si através de HTTP e através de comunicação assíncrona com AWS SQS.
 
-O sistema é composto por três serviços principais:
-
-* `api-gateway`
-* `order-service`
-* `worker-service`
-
-O `api-gateway` é o ponto de entrada público da aplicação. Recebe pedidos HTTP dos utilizadores e encaminha-os para o `order-service`.
-
-O `order-service` é responsável por criar e listar orders. Sempre que uma nova order é criada, os dados são guardados numa base de dados PostgreSQL em Amazon RDS e é enviada uma mensagem para uma fila Amazon SQS.
-
-O `worker-service` consome mensagens da fila SQS e processa as orders de forma assíncrona, atualizando o seu estado na base de dados para `PROCESSED`.
+A solução está alojada na AWS e utiliza uma infraestrutura criada com Terraform.
 
 ## Diagrama da Arquitetura
 
 ```text
-Utilizador
-   |
-   v
-Internet
-   |
-   v
-EC2 Instance - Public Subnet
-   |
-   |---- api-gateway
-   |        |
-   |        v
-   |---- order-service
-   |        |
-   |        |---- Amazon RDS PostgreSQL - Private Subnet
-   |        |
-   |        v
-   |---- Amazon SQS Queue
-            |
-            v
-        worker-service
-            |
-            v
-      Atualiza estado da order na RDS
-```
-
-## Diagrama de Infraestrutura e Deploy
-
-```text
-Developer
-   |
-   v
-GitHub
-   |
-   v
-GitHub Actions
-   |
-   |---- Terraform apply
-   |---- Docker build
-   |---- Push para Amazon ECR
-   |---- Deploy com Ansible
-   |
-   v
-AWS
-   |
-   |---- VPC
-   |     |
-   |     |---- Public Subnets
-   |     |       |
-   |     |       └── EC2 com Docker
-   |     |
-   |     |---- Private Subnets
-   |             |
-   |             └── Amazon RDS PostgreSQL
-   |
-   |---- Amazon SQS Queue
-   |---- Amazon SQS Dead Letter Queue
-   |---- Amazon ECR Repositories
-   |---- S3 Bucket para Terraform Remote State
-   |---- DynamoDB Table para Terraform State Locking
+Cliente
+  |
+  v
+api-gateway
+  |
+  v
+order-service
+  |
+  v
+AWS SQS Queue
+  |
+  v
+worker-service
+  |
+  v
+AWS RDS Database
 ```
 
 ## Infraestrutura AWS
 
-O projeto foi implementado na região:
+A infraestrutura é criada dentro de uma VPC própria.
 
 ```text
-us-east-1
+AWS
+└── Custom VPC
+    ├── Public Subnet
+    │   └── EC2 com Docker
+    ├── Private Subnet
+    │   └── RDS Database
+    ├── Route Tables
+    ├── Internet Gateway
+    └── Security Groups
 ```
 
-A infraestrutura inclui:
-
-* VPC
-* Public subnets
-* Private subnets
-* Internet Gateway
-* Route tables
-* Security Groups
-* EC2 instance
-* Amazon RDS PostgreSQL
-* Amazon SQS Queue
-* Amazon SQS Dead Letter Queue
-* Amazon ECR repositories
-* S3 Bucket para Terraform remote state
-* DynamoDB Table para Terraform state locking
-
-## Componentes da Arquitetura
-
-### VPC
-
-A VPC isola os recursos do projeto dentro da AWS. Esta rede contém subnets públicas e privadas, permitindo separar os recursos acessíveis pela internet dos recursos internos.
-
-### Public Subnets
-
-As public subnets alojam a instância EC2. A EC2 precisa de estar numa subnet pública porque recebe tráfego HTTP dos utilizadores e também é usada no processo de deploy através de SSH/Ansible.
-
-### Private Subnets
-
-As private subnets alojam a base de dados Amazon RDS. A base de dados não está exposta diretamente à internet, aumentando a segurança da solução.
-
-### EC2 Instance
-
-A EC2 funciona como servidor da aplicação. Nesta instância correm os containers Docker dos três serviços principais:
-
-* `api-gateway`
-* `order-service`
-* `worker-service`
-
-### Amazon RDS PostgreSQL
-
-O Amazon RDS PostgreSQL é usado para guardar os dados das orders.
-
-A base de dados está configurada como privada, ou seja, não está publicamente acessível. Apenas os serviços da aplicação conseguem comunicar com a RDS através dos Security Groups definidos.
-
-### Amazon SQS
-
-O Amazon SQS é usado para comunicação assíncrona entre o `order-service` e o `worker-service`.
-
-Quando uma order é criada, o `order-service` envia uma mensagem para a fila SQS. O `worker-service` consome essa mensagem e processa a order em background.
-
-### Dead Letter Queue
-
-A Dead Letter Queue recebe mensagens que falham várias vezes no processamento. Isto permite isolar mensagens problemáticas e melhora a resiliência da aplicação.
-
-### Amazon ECR
-
-O Amazon ECR é usado como registry privado para guardar as imagens Docker dos serviços.
-
-Foram usados três repositórios ECR:
-
-```text
-tomber-api-gateway
-tomber-order-service
-tomber-worker-service
-```
-
-Durante o deploy, o GitHub Actions faz build das imagens, envia-as para o ECR e depois a EC2 faz pull dessas imagens.
-
-### S3 e DynamoDB
-
-O S3 Bucket é usado para guardar o Terraform remote state.
-
-A DynamoDB Table é usada para Terraform state locking. Isto evita que duas execuções de Terraform modifiquem a infraestrutura ao mesmo tempo.
-
-## Limites dos Serviços
+## Componentes da Aplicação
 
 ### api-gateway
 
-O `api-gateway` é o ponto de entrada público da aplicação.
+O `api-gateway` é o serviço exposto publicamente.
 
 Responsabilidades:
 
-* Receber pedidos HTTP dos utilizadores.
-* Expor os endpoints principais da aplicação.
-* Encaminhar pedidos para o `order-service`.
+- Receber pedidos HTTP do cliente
+- Encaminhar pedidos para o `order-service`
+- Expor endpoints públicos
+- Disponibilizar endpoint `/health`
 
-Endpoints principais:
-
-```text
-GET /health
-POST /orders
-GET /orders
-```
+Este serviço representa a entrada principal da aplicação.
 
 ### order-service
 
-O `order-service` é responsável pela lógica principal relacionada com orders.
+O `order-service` contém a lógica principal relacionada com pedidos.
 
 Responsabilidades:
 
-* Criar orders.
-* Guardar orders na base de dados PostgreSQL.
-* Listar orders existentes.
-* Enviar mensagens para a fila SQS quando uma order é criada.
+- Receber pedidos vindos do `api-gateway`
+- Criar eventos relacionados com pedidos
+- Publicar mensagens na fila AWS SQS
+- Comunicar com a base de dados quando necessário
+- Disponibilizar endpoint `/health`
+
+Este serviço atua como produtor de mensagens para a fila SQS.
 
 ### worker-service
 
-O `worker-service` processa tarefas em background.
+O `worker-service` é um serviço de background.
 
 Responsabilidades:
 
-* Consumir mensagens da fila SQS.
-* Processar orders de forma assíncrona.
-* Atualizar o estado das orders para `PROCESSED`.
-* Garantir que o processamento não bloqueia o pedido principal do utilizador.
+- Consumir mensagens da AWS SQS
+- Processar tarefas de forma assíncrona
+- Guardar ou atualizar dados na base de dados RDS
+- Produzir logs sobre o processamento das mensagens
+
+Este serviço atua como consumidor da fila SQS.
+
+## Comunicação entre Serviços
+
+O projeto demonstra dois tipos de comunicação.
+
+### Comunicação Síncrona
+
+A comunicação síncrona acontece através de HTTP.
+
+Exemplo:
+
+```text
+api-gateway -> order-service
+```
+
+### Comunicação Assíncrona
+
+A comunicação assíncrona acontece através de AWS SQS.
+
+Exemplo:
+
+```text
+order-service -> SQS -> worker-service
+```
+
+Esta abordagem permite desacoplar os serviços. O `order-service` não precisa de esperar que o `worker-service` processe a tarefa imediatamente.
+
+## AWS SQS
+
+A AWS SQS é usada como mecanismo de comunicação assíncrona.
+
+Vantagens:
+
+- Desacoplamento entre serviços
+- Processamento em background
+- Maior tolerância a falhas
+- Possibilidade de retry
+- Possibilidade de Dead Letter Queue
+
+Produtor:
+
+```text
+order-service
+```
+
+Consumidor:
+
+```text
+worker-service
+```
+
+## AWS RDS
+
+A AWS RDS é usada como camada de persistência.
+
+A base de dados guarda informação da aplicação, como pedidos ou resultados processados.
+
+Idealmente, a base de dados deve estar numa subnet privada e apenas acessível pela EC2 ou pelos serviços autorizados.
 
 ## Fluxo de Dados
 
-```text
-1. O utilizador envia um pedido HTTP para o api-gateway.
-2. O api-gateway encaminha o pedido para o order-service.
-3. O order-service cria a order na base de dados RDS PostgreSQL.
-4. O order-service envia uma mensagem para a fila Amazon SQS.
-5. O worker-service consome a mensagem da fila SQS.
-6. O worker-service processa a order.
-7. O worker-service atualiza o estado da order na base de dados para PROCESSED.
-8. O utilizador pode consultar a lista de orders através do api-gateway.
-```
+1. O cliente faz um pedido ao `api-gateway`.
+2. O `api-gateway` encaminha o pedido para o `order-service`.
+3. O `order-service` cria um evento e envia uma mensagem para a AWS SQS.
+4. O `worker-service` lê a mensagem da fila.
+5. O `worker-service` processa a mensagem.
+6. O resultado é guardado ou atualizado na base de dados RDS.
+7. Os logs podem ser consultados localmente ou através do CloudWatch Logs, se configurado.
 
-## Fluxo de Deploy
+## Objetivo Técnico
 
-```text
-Developer
-   |
-   v
-Branch dev
-   |
-   v
-Pull Request para main
-   |
-   v
-GitHub Actions - Pull Request Checks
-   |
-   |---- Terraform fmt
-   |---- Terraform init
-   |---- Terraform validate
-   |---- Terraform plan
-   |---- Docker build
-   |
-   v
-Merge para main
-   |
-   v
-GitHub Actions - Production Deploy
-   |
-   |---- Terraform apply
-   |---- Login no Amazon ECR
-   |---- Docker build
-   |---- Push das imagens para Amazon ECR
-   |---- Deploy na EC2 com Ansible
-   |
-   v
-Aplicação atualizada em produção
-```
+O foco do projeto não é a complexidade da aplicação, mas sim a qualidade da engenharia cloud.
 
-## Estratégia de Branches
+O projeto demonstra:
 
-O projeto usa duas branches principais:
-
-```text
-main
-dev
-```
-
-A branch `dev` é usada para desenvolvimento.
-
-A branch `main` representa a versão estável do projeto e é usada para deploy de produção.
-
-O fluxo usado é:
-
-```text
-dev → Pull Request → main → Production Deploy
-```
-
-A branch `main` deve ser protegida para evitar alterações diretas sem validação.
-
-## Naming Convention
-
-Os recursos AWS usam o seguinte padrão de nomes:
-
-```text
-tomber-cloud-dev-resource-name
-```
-
-Exemplos:
-
-```text
-tomber-cloud-dev-vpc
-tomber-cloud-dev-ec2-app
-tomber-cloud-dev-postgres
-tomber-cloud-dev-orders-queue
-tomber-cloud-dev-orders-dlq
-tomber-cloud-dev-sg-web
-tomber-cloud-dev-sg-db
-```
-
-Este padrão facilita a identificação dos recursos na AWS e mantém consistência entre os diferentes componentes da infraestrutura.
-
-## Escolhas Tecnológicas
-
-| Área                   | Tecnologia            |
-| ---------------------- | --------------------- |
-| Cloud Provider         | AWS                   |
-| Região                 | us-east-1             |
-| Infrastructure as Code | Terraform             |
-| Deploy                 | Ansible               |
-| CI/CD                  | GitHub Actions        |
-| Compute                | EC2                   |
-| Containers             | Docker                |
-| Container Registry     | Amazon ECR            |
-| Base de dados          | Amazon RDS PostgreSQL |
-| Queue                  | Amazon SQS            |
-| Remote State           | S3                    |
-| State Locking          | DynamoDB              |
-| Version Control        | GitHub                |
-| Linguagem da aplicação | Python Flask          |
-
-## Justificação da Arquitetura
-
-A arquitetura foi escolhida para demonstrar os principais conceitos de uma solução cloud moderna, mantendo a complexidade controlada.
-
-A EC2 permite executar os containers Docker de forma simples. O Amazon RDS garante persistência de dados. O Amazon SQS permite processamento assíncrono. O Amazon ECR permite guardar imagens Docker de forma segura. O Terraform permite criar e gerir a infraestrutura como código. O GitHub Actions automatiza o pipeline CI/CD. O Ansible automatiza o deploy dos serviços na EC2.
-
-Esta arquitetura demonstra uma solução completa, desde a criação da infraestrutura até ao deploy automatizado da aplicação.
+- Separação de serviços
+- Comunicação entre serviços
+- Comunicação assíncrona
+- Infraestrutura isolada em VPC
+- Uso de base de dados persistente
+- Automação da infraestrutura
+- Automação do deploy
+- Segurança com IAM e Security Groups
+- Observabilidade através de logs e health checks

@@ -10,6 +10,7 @@ app = Flask(__name__)
 
 SQS_QUEUE_URL = os.getenv("SQS_QUEUE_URL")
 AWS_REGION = os.getenv("AWS_REGION", "us-east-1")
+LOCAL_MODE = os.getenv("LOCAL_MODE", "false").lower() == "true"
 
 
 def get_connection():
@@ -47,11 +48,12 @@ def init_db():
             conn.commit()
             cur.close()
             conn.close()
+
             print("Database initialized", flush=True)
             return
 
         except Exception as error:
-            print(f"Database not ready yet: {error}", flush=True)
+            print(f"Database not ready yet. Attempt {attempt + 1}/{retries}: {error}", flush=True)
             time.sleep(3)
 
     raise Exception("Could not connect to database")
@@ -62,12 +64,52 @@ def health():
     return jsonify({
         "service": "order-service",
         "status": "ok"
-    })
+    }), 200
+
+
+@app.get("/ready")
+def ready():
+    checks = {
+        "database": "unknown",
+        "local_mode": LOCAL_MODE,
+        "sqs": "disabled_local_mode" if LOCAL_MODE else ("configured" if SQS_QUEUE_URL else "not_configured")
+    }
+
+    try:
+        conn = get_connection()
+        cur = conn.cursor()
+        cur.execute("SELECT 1;")
+        cur.fetchone()
+        cur.close()
+        conn.close()
+
+        checks["database"] = "connected"
+
+        return jsonify({
+            "service": "order-service",
+            "status": "ready",
+            "checks": checks
+        }), 200
+
+    except Exception as error:
+        checks["database"] = "unreachable"
+
+        return jsonify({
+            "service": "order-service",
+            "status": "not_ready",
+            "checks": checks,
+            "error": str(error)
+        }), 503
 
 
 @app.post("/orders")
 def create_order():
     data = request.get_json()
+
+    if not data:
+        return jsonify({
+            "error": "Request body is required"
+        }), 400
 
     product_name = data.get("product_name")
     quantity = data.get("quantity")
@@ -92,7 +134,10 @@ def create_order():
     cur.close()
     conn.close()
 
-    if SQS_QUEUE_URL:
+    if LOCAL_MODE:
+        print(f"LOCAL_MODE=true. Order {order['id']} created locally. Message not sent to SQS.", flush=True)
+
+    elif SQS_QUEUE_URL:
         try:
             sqs = get_sqs_client()
 
@@ -134,7 +179,7 @@ def list_orders():
     cur.close()
     conn.close()
 
-    return jsonify(orders)
+    return jsonify(orders), 200
 
 
 if __name__ == "__main__":
