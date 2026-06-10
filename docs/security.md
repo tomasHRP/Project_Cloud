@@ -12,7 +12,6 @@ Exemplos:
 
 - A EC2 deve ter apenas permissões necessárias para aceder aos serviços usados pela aplicação.
 - O acesso à SQS deve ser limitado à fila usada no projeto.
-- O acesso ao CloudWatch Logs deve ser limitado aos log groups necessários.
 - O GitHub Actions deve usar permissões controladas para fazer deploy.
 - As permissões não devem usar `*` quando for possível definir recursos específicos.
 

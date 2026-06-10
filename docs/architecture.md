@@ -153,7 +153,6 @@ Idealmente, a base de dados deve estar numa subnet privada e apenas acessível p
 4. O `worker-service` lê a mensagem da fila.
 5. O `worker-service` processa a mensagem.
 6. O resultado é guardado ou atualizado na base de dados RDS.
-7. Os logs podem ser consultados localmente ou através do CloudWatch Logs, se configurado.
 
 ## Objetivo Técnico
 

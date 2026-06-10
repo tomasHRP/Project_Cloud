@@ -75,23 +75,6 @@ Resultado esperado:
 }
 ```
 
-### CloudWatch Logs
-
-Os logs dos containers serão enviados para AWS CloudWatch Logs.
-
-Cada serviço poderá ter o seu próprio log group:
-
-```text
-/cloud-project/api-gateway
-/cloud-project/order-service
-/cloud-project/worker-service
-```
-
-Isto melhora a observabilidade e facilita o debugging do fluxo distribuído:
-
-```text
-api-gateway -> order-service -> SQS -> worker-service -> RDS
-```
 
 ## Roadmap Futuro
 

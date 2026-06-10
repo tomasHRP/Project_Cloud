@@ -28,7 +28,6 @@ A conta AWS deve permitir criar e gerir os seguintes recursos:
 - RDS
 - SQS
 - IAM Roles e Policies
-- CloudWatch Logs, caso os stretch goals sejam implementados
 
 ## Configuração da AWS CLI
 

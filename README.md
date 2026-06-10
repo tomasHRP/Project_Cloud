@@ -109,12 +109,9 @@ A documentação completa está dividida nos seguintes ficheiros:
 
 ## Stretch Goals Planeados
 
-Foram escolhidos dois stretch goals:
+Foi escolhido um stretch goal:
 
 1. **Health Checks**
     - Cada serviço expõe um endpoint `/health`.
 
-2. **CloudWatch Logs**
-    - Os logs dos containers são enviados para AWS CloudWatch Logs.
-
-Estes objetivos melhoram a observabilidade, facilitam debugging e tornam a solução mais próxima de um ambiente real de produção.
+Este objetivo melhora a observabilidade, facilitamdebugging e torna a solução mais próxima de um ambiente real de produção.
