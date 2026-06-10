@@ -1,0 +1,48 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: tomber-postgres
+    environment:
+      POSTGRES_DB: cloudapp
+      POSTGRES_USER: cloudadmin
+      POSTGRES_PASSWORD: cloudpassword
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  order-service:
+    build:
+      context: ./services/order-service
+    container_name: tomber-order-service
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: cloudapp
+      DB_USER: cloudadmin
+      DB_PASSWORD: cloudpassword
+    ports:
+      - "5001:5001"
+    depends_on:
+      - postgres
+
+  api-gateway:
+    build:
+      context: ./services/api-gateway
+    container_name: tomber-api-gateway
+    environment:
+      ORDER_SERVICE_URL: http://order-service:5001
+    ports:
+      - "8080:5000"
+    depends_on:
+      - order-service
+
+  worker-service:
+    build:
+      context: ./services/worker-service
+    container_name: tomber-worker-service
+    ports:
+      - "5002:5002"
+
+volumes:
+  postgres_data:
