@@ -1,6 +1,5 @@
 ---
 
-
 - name: Deploy production services
   hosts: all
   become: true
@@ -41,9 +40,6 @@
         AWS_SESSION_TOKEN: "{{ lookup('env', 'AWS_SESSION_TOKEN') }}"
       no_log: true
 
-    - name: Create Docker network
-      ansible.builtin.shell: docker network create "{{ app_network }}" || true
-
     - name: Write application environment file
       ansible.builtin.copy:
         dest: "{{ app_dir }}/app.env"
@@ -67,10 +63,12 @@
         docker rm -f api-gateway || true
         docker rm -f order-service || true
         docker rm -f worker-service || true
-        docker rm -f hello-world || true
 
     - name: Clean unused Docker data
       ansible.builtin.shell: docker system prune -af || true
+
+    - name: Create Docker network
+      ansible.builtin.shell: docker network create "{{ app_network }}" || true
 
     - name: Pull Docker images
       ansible.builtin.shell: |
@@ -86,7 +84,7 @@
           --network "{{ app_network }}" \
           --env-file "{{ app_dir }}/app.env" \
           -p 5001:5001 \
-          --health-cmd "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:5001/health')\"" \
+          --health-cmd "python -c 'import urllib.request; urllib.request.urlopen(\"http://localhost:5001/health\")'" \
           --health-interval 30s \
           --health-timeout 5s \
           --health-retries 3 \
@@ -101,7 +99,7 @@
           --network "{{ app_network }}" \
           --env-file "{{ app_dir }}/app.env" \
           -p 5002:5002 \
-          --health-cmd "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:5002/health')\"" \
+          --health-cmd "python -c 'import urllib.request; urllib.request.urlopen(\"http://localhost:5002/health\")'" \
           --health-interval 30s \
           --health-timeout 5s \
           --health-retries 3 \
@@ -116,7 +114,7 @@
           --network "{{ app_network }}" \
           -e ORDER_SERVICE_URL=http://order-service:5001 \
           -p 80:5000 \
-          --health-cmd "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:5000/health')\"" \
+          --health-cmd "python -c 'import urllib.request; urllib.request.urlopen(\"http://localhost:5000/health\")'" \
           --health-interval 30s \
           --health-timeout 5s \
           --health-retries 3 \
