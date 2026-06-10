@@ -12,7 +12,35 @@ def health():
     return jsonify({
         "service": "api-gateway",
         "status": "ok"
-    })
+    }), 200
+
+
+@app.get("/ready")
+def ready():
+    try:
+        response = requests.get(f"{ORDER_SERVICE_URL}/health", timeout=3)
+
+        if response.status_code == 200:
+            return jsonify({
+                "service": "api-gateway",
+                "status": "ready",
+                "order_service": "reachable"
+            }), 200
+
+        return jsonify({
+            "service": "api-gateway",
+            "status": "not_ready",
+            "order_service": "unhealthy",
+            "order_service_status_code": response.status_code
+        }), 503
+
+    except Exception as error:
+        return jsonify({
+            "service": "api-gateway",
+            "status": "not_ready",
+            "order_service": "unreachable",
+            "error": str(error)
+        }), 503
 
 
 @app.post("/orders")

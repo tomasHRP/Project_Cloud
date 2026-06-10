@@ -10,6 +10,10 @@ app = Flask(__name__)
 
 SQS_QUEUE_URL = os.getenv("SQS_QUEUE_URL")
 AWS_REGION = os.getenv("AWS_REGION", "us-east-1")
+LOCAL_MODE = os.getenv("LOCAL_MODE", "false").lower() == "true"
+
+worker_started = False
+last_worker_heartbeat = None
 
 
 def get_connection():
@@ -44,16 +48,37 @@ def process_order(order_id):
 
 
 def consume_messages():
+    global worker_started
+    global last_worker_heartbeat
+
+    worker_started = True
+    last_worker_heartbeat = time.time()
+
     print("Worker consumer started", flush=True)
+    print(f"LOCAL_MODE={LOCAL_MODE}", flush=True)
     print(f"SQS_QUEUE_URL={SQS_QUEUE_URL}", flush=True)
+
+    if LOCAL_MODE:
+        print("LOCAL_MODE=true. Worker will not consume SQS locally.", flush=True)
+
+        while True:
+            last_worker_heartbeat = time.time()
+            print("Worker running in local mode.", flush=True)
+            time.sleep(30)
 
     if not SQS_QUEUE_URL:
         print("SQS_QUEUE_URL not configured. Worker will not consume messages.", flush=True)
-        return
+
+        while True:
+            last_worker_heartbeat = time.time()
+            print("Worker running but SQS is not configured.", flush=True)
+            time.sleep(30)
 
     sqs = get_sqs_client()
 
     while True:
+        last_worker_heartbeat = time.time()
+
         try:
             response = sqs.receive_message(
                 QueueUrl=SQS_QUEUE_URL,
@@ -89,8 +114,59 @@ def health():
     return jsonify({
         "service": "worker-service",
         "status": "ok",
-        "message": "Worker service ready for async processing"
-    })
+        "message": "Worker service running"
+    }), 200
+
+
+@app.get("/ready")
+def ready():
+    checks = {
+        "database": "unknown",
+        "local_mode": LOCAL_MODE,
+        "sqs": "disabled_local_mode" if LOCAL_MODE else ("configured" if SQS_QUEUE_URL else "not_configured"),
+        "worker_thread": "started" if worker_started else "not_started",
+        "last_worker_heartbeat": last_worker_heartbeat
+    }
+
+    try:
+        conn = get_connection()
+        cur = conn.cursor()
+        cur.execute("SELECT 1;")
+        cur.fetchone()
+        cur.close()
+        conn.close()
+
+        checks["database"] = "connected"
+
+        if not worker_started:
+            return jsonify({
+                "service": "worker-service",
+                "status": "not_ready",
+                "checks": checks
+            }), 503
+
+        if not LOCAL_MODE and not SQS_QUEUE_URL:
+            return jsonify({
+                "service": "worker-service",
+                "status": "not_ready",
+                "checks": checks
+            }), 503
+
+        return jsonify({
+            "service": "worker-service",
+            "status": "ready",
+            "checks": checks
+        }), 200
+
+    except Exception as error:
+        checks["database"] = "unreachable"
+
+        return jsonify({
+            "service": "worker-service",
+            "status": "not_ready",
+            "checks": checks,
+            "error": str(error)
+        }), 503
 
 
 if __name__ == "__main__":

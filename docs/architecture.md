@@ -1,162 +1,172 @@
-# Architecture
+# Arquitetura
 
-## Project Approach
+## Visão Geral
 
-This project follows **Approach B — Custom Application Track**.
+Este projeto segue uma arquitetura distribuída baseada em microserviços.
 
-The application will be developed as a simple custom microservices system designed to demonstrate cloud engineering concepts, including infrastructure automation, containerized deployment, CI/CD, asynchronous communication, database integration, and security best practices.
+A aplicação é composta por vários serviços independentes que comunicam entre si através de HTTP e através de comunicação assíncrona com AWS SQS.
 
-The main goal of the project is not to build a complex business application, but to demonstrate the correct use of AWS, Terraform, Docker, Ansible, GitHub Actions, RDS, and SQS in a cloud-native architecture.
+A solução está alojada na AWS e utiliza uma infraestrutura criada com Terraform.
 
-
-
-## Overview
-
-This project is a simple cloud-based microservices application deployed on AWS.
-
-The application will use Docker containers running on an EC2 instance. The infrastructure will be created with Terraform, and the deployment will be automated with GitHub Actions and Ansible.
-
-The system has three main services:
-
-* `api-gateway`
-* `order-service`
-* `worker-service`
-
-The `api-gateway` receives HTTP requests from users and forwards them to the internal services. The `order-service` manages orders and stores data in a database. The `worker-service` processes asynchronous messages from an SQS queue.
-
-## Architecture Diagram
+## Diagrama da Arquitetura
 
 ```text
-User
+Cliente
   |
   v
-Internet
+api-gateway
   |
   v
-EC2 Instance
+order-service
   |
-  |---- api-gateway
+  v
+AWS SQS Queue
   |
-  |---- order-service
-  |        |
-  |        v
-  |      RDS Database
+  v
+worker-service
   |
-  |---- worker-service
-           ^
-           |
-        SQS Queue
+  v
+AWS RDS Database
 ```
 
-## AWS Infrastructure
+## Infraestrutura AWS
 
-The project will be deployed in the `us-east-1` AWS region.
+A infraestrutura é criada dentro de uma VPC própria.
 
-The infrastructure will include:
+```text
+AWS
+└── Custom VPC
+    ├── Public Subnet
+    │   └── EC2 com Docker
+    ├── Private Subnet
+    │   └── RDS Database
+    ├── Route Tables
+    ├── Internet Gateway
+    └── Security Groups
+```
 
-* VPC
-* Public subnets
-* Private subnets
-* Internet Gateway
-* Security groups
-* EC2 instance
-* RDS database
-* SQS queue
-* Dead Letter Queue
-* S3 bucket for Terraform remote state
-* DynamoDB table for Terraform state locking
-
-## Service Boundaries
+## Componentes da Aplicação
 
 ### api-gateway
 
-The `api-gateway` is the public entry point of the application. It receives HTTP requests from users and routes them to the correct internal service.
+O `api-gateway` é o serviço exposto publicamente.
+
+Responsabilidades:
+
+- Receber pedidos HTTP do cliente
+- Encaminhar pedidos para o `order-service`
+- Expor endpoints públicos
+- Disponibilizar endpoint `/health`
+
+Este serviço representa a entrada principal da aplicação.
 
 ### order-service
 
-The `order-service` manages order-related operations. It stores order data in the RDS database and sends messages to SQS when an order is created.
+O `order-service` contém a lógica principal relacionada com pedidos.
+
+Responsabilidades:
+
+- Receber pedidos vindos do `api-gateway`
+- Criar eventos relacionados com pedidos
+- Publicar mensagens na fila AWS SQS
+- Comunicar com a base de dados quando necessário
+- Disponibilizar endpoint `/health`
+
+Este serviço atua como produtor de mensagens para a fila SQS.
 
 ### worker-service
 
-The `worker-service` consumes messages from SQS and processes background tasks related to orders.
+O `worker-service` é um serviço de background.
 
-## Data Flow
+Responsabilidades:
 
-```text
-1. The user sends a request to the api-gateway.
-2. The api-gateway forwards the request to the order-service.
-3. The order-service stores the order in the RDS database.
-4. The order-service sends a message to SQS.
-5. The worker-service consumes the message from SQS.
-6. The worker-service processes the order.
-7. The database is updated with the final order status.
-```
+- Consumir mensagens da AWS SQS
+- Processar tarefas de forma assíncrona
+- Guardar ou atualizar dados na base de dados RDS
+- Produzir logs sobre o processamento das mensagens
 
-## Deployment Flow
+Este serviço atua como consumidor da fila SQS.
 
-```text
-Developer
-  |
-  v
-GitHub
-  |
-  v
-GitHub Actions
-  |
-  |---- Terraform
-  |---- Docker build
-  |---- Docker push
-  |---- Ansible deploy
-  |
-  v
-AWS EC2
-```
+## Comunicação entre Serviços
 
-## Naming Convention
+O projeto demonstra dois tipos de comunicação.
 
-All AWS resources will use the following naming pattern:
+### Comunicação Síncrona
+
+A comunicação síncrona acontece através de HTTP.
+
+Exemplo:
 
 ```text
-tomber-cloud-dev-resource-name
+api-gateway -> order-service
 ```
 
-Examples:
+### Comunicação Assíncrona
+
+A comunicação assíncrona acontece através de AWS SQS.
+
+Exemplo:
 
 ```text
-tomber-cloud-dev-vpc
-tomber-cloud-dev-ec2
-tomber-cloud-dev-rds
-tomber-cloud-dev-sqs
-tomber-cloud-dev-dlq
-tomber-cloud-dev-sg-web
-tomber-cloud-dev-sg-db
+order-service -> SQS -> worker-service
 ```
 
-## Branching Strategy
+Esta abordagem permite desacoplar os serviços. O `order-service` não precisa de esperar que o `worker-service` processe a tarefa imediatamente.
 
-The project will use the following branches:
+## AWS SQS
+
+A AWS SQS é usada como mecanismo de comunicação assíncrona.
+
+Vantagens:
+
+- Desacoplamento entre serviços
+- Processamento em background
+- Maior tolerância a falhas
+- Possibilidade de retry
+- Possibilidade de Dead Letter Queue
+
+Produtor:
 
 ```text
-main
-dev
-feature/*
+order-service
 ```
 
-Development will be done in `feature/*` branches. Pull requests will be used before merging into `main`.
+Consumidor:
 
-The `main` branch will be protected and will be used for production deployment.
+```text
+worker-service
+```
 
-## Technology Choices
+## AWS RDS
 
-| Area                   | Technology            |
-| ---------------------- | --------------------- |
-| Cloud Provider         | AWS                   |
-| Region                 | us-east-1             |
-| Infrastructure as Code | Terraform             |
-| Deployment             | Ansible               |
-| CI/CD                  | GitHub Actions        |
-| Compute                | EC2                   |
-| Containers             | Docker                |
-| Database               | Amazon RDS PostgreSQL |
-| Queue                  | Amazon SQS            |
-| Version Control        | GitHub                |
+A AWS RDS é usada como camada de persistência.
+
+A base de dados guarda informação da aplicação, como pedidos ou resultados processados.
+
+Idealmente, a base de dados deve estar numa subnet privada e apenas acessível pela EC2 ou pelos serviços autorizados.
+
+## Fluxo de Dados
+
+1. O cliente faz um pedido ao `api-gateway`.
+2. O `api-gateway` encaminha o pedido para o `order-service`.
+3. O `order-service` cria um evento e envia uma mensagem para a AWS SQS.
+4. O `worker-service` lê a mensagem da fila.
+5. O `worker-service` processa a mensagem.
+6. O resultado é guardado ou atualizado na base de dados RDS.
+7. Os logs podem ser consultados localmente ou através do CloudWatch Logs, se configurado.
+
+## Objetivo Técnico
+
+O foco do projeto não é a complexidade da aplicação, mas sim a qualidade da engenharia cloud.
+
+O projeto demonstra:
+
+- Separação de serviços
+- Comunicação entre serviços
+- Comunicação assíncrona
+- Infraestrutura isolada em VPC
+- Uso de base de dados persistente
+- Automação da infraestrutura
+- Automação do deploy
+- Segurança com IAM e Security Groups
+- Observabilidade através de logs e health checks

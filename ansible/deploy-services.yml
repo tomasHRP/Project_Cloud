@@ -1,5 +1,6 @@
 ---
 
+
 - name: Deploy production services
   hosts: all
   become: true
@@ -40,6 +41,9 @@
         AWS_SESSION_TOKEN: "{{ lookup('env', 'AWS_SESSION_TOKEN') }}"
       no_log: true
 
+    - name: Create Docker network
+      ansible.builtin.shell: docker network create "{{ app_network }}" || true
+
     - name: Write application environment file
       ansible.builtin.copy:
         dest: "{{ app_dir }}/app.env"
@@ -52,9 +56,11 @@
           DB_PASSWORD={{ lookup('env', 'DB_PASSWORD') }}
           AWS_REGION=us-east-1
           SQS_QUEUE_URL={{ lookup('env', 'SQS_QUEUE_URL') }}
+          LOCAL_MODE=false
           AWS_ACCESS_KEY_ID={{ lookup('env', 'AWS_ACCESS_KEY_ID') }}
           AWS_SECRET_ACCESS_KEY={{ lookup('env', 'AWS_SECRET_ACCESS_KEY') }}
           AWS_SESSION_TOKEN={{ lookup('env', 'AWS_SESSION_TOKEN') }}
+      no_log: true
 
     - name: Remove old containers before pulling new images
       ansible.builtin.shell: |
@@ -64,12 +70,7 @@
         docker rm -f hello-world || true
 
     - name: Clean unused Docker data
-      ansible.builtin.shell: |
-        docker system prune -af || true
-        docker image prune -af || true
-
-    - name: Create Docker network
-      ansible.builtin.shell: docker network create "{{ app_network }}" || true
+      ansible.builtin.shell: docker system prune -af || true
 
     - name: Pull Docker images
       ansible.builtin.shell: |
@@ -85,6 +86,11 @@
           --network "{{ app_network }}" \
           --env-file "{{ app_dir }}/app.env" \
           -p 5001:5001 \
+          --health-cmd "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:5001/health')\"" \
+          --health-interval 30s \
+          --health-timeout 5s \
+          --health-retries 3 \
+          --health-start-period 30s \
           "{{ order_image }}"
 
     - name: Run worker-service
@@ -95,6 +101,11 @@
           --network "{{ app_network }}" \
           --env-file "{{ app_dir }}/app.env" \
           -p 5002:5002 \
+          --health-cmd "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:5002/health')\"" \
+          --health-interval 30s \
+          --health-timeout 5s \
+          --health-retries 3 \
+          --health-start-period 30s \
           "{{ worker_image }}"
 
     - name: Run api-gateway
@@ -105,4 +116,38 @@
           --network "{{ app_network }}" \
           -e ORDER_SERVICE_URL=http://order-service:5001 \
           -p 80:5000 \
+          --health-cmd "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:5000/health')\"" \
+          --health-interval 30s \
+          --health-timeout 5s \
+          --health-retries 3 \
+          --health-start-period 20s \
           "{{ api_image }}"
+
+    - name: Wait for order-service health
+      ansible.builtin.shell: docker inspect --format='{{ "{{" }}.State.Health.Status{{ "}}" }}' order-service
+      register: order_health
+      retries: 10
+      delay: 6
+      until: order_health.stdout == "healthy"
+
+    - name: Wait for worker-service health
+      ansible.builtin.shell: docker inspect --format='{{ "{{" }}.State.Health.Status{{ "}}" }}' worker-service
+      register: worker_health
+      retries: 10
+      delay: 6
+      until: worker_health.stdout == "healthy"
+
+    - name: Wait for api-gateway health
+      ansible.builtin.shell: docker inspect --format='{{ "{{" }}.State.Health.Status{{ "}}" }}' api-gateway
+      register: api_health
+      retries: 10
+      delay: 6
+      until: api_health.stdout == "healthy"
+
+    - name: Show running containers
+      ansible.builtin.shell: docker ps
+      register: docker_ps_output
+
+    - name: Print running containers
+      ansible.builtin.debug:
+        var: docker_ps_output.stdout_lines
