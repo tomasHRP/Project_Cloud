@@ -1,4 +1,5 @@
 ---
+
 - name: Deploy production services
   hosts: all
   become: true
@@ -58,18 +59,21 @@
           AWS_SECRET_ACCESS_KEY={{ lookup('env', 'AWS_SECRET_ACCESS_KEY') }}
           AWS_SESSION_TOKEN={{ lookup('env', 'AWS_SESSION_TOKEN') }}
 
-    - name: Pull Docker images
-      ansible.builtin.shell: |
-        docker pull "{{ api_image }}"
-        docker pull "{{ order_image }}"
-        docker pull "{{ worker_image }}"
-
-    - name: Remove old containers
+    - name: Remove old containers before pulling new images
       ansible.builtin.shell: |
         docker rm -f api-gateway || true
         docker rm -f order-service || true
         docker rm -f worker-service || true
         docker rm -f hello-world || true
+
+    - name: Clean unused Docker data
+      ansible.builtin.shell: docker system prune -af || true
+
+    - name: Pull Docker images
+      ansible.builtin.shell: |
+        docker pull "{{ api_image }}"
+        docker pull "{{ order_image }}"
+        docker pull "{{ worker_image }}"
 
     - name: Run order-service
       ansible.builtin.shell: |
