@@ -1,10 +1,15 @@
 from flask import Flask, request, jsonify
 import os
 import time
+import json
+import boto3
 import psycopg2
 import psycopg2.extras
 
 app = Flask(__name__)
+
+SQS_QUEUE_URL = os.getenv("SQS_QUEUE_URL")
+AWS_REGION = os.getenv("AWS_REGION", "us-east-1")
 
 
 def get_connection():
@@ -15,6 +20,10 @@ def get_connection():
         user=os.getenv("DB_USER", "cloudadmin"),
         password=os.getenv("DB_PASSWORD", "cloudpassword")
     )
+
+
+def get_sqs_client():
+    return boto3.client("sqs", region_name=AWS_REGION)
 
 
 def init_db():
@@ -38,11 +47,11 @@ def init_db():
             conn.commit()
             cur.close()
             conn.close()
-            print("Database initialized")
+            print("Database initialized", flush=True)
             return
 
         except Exception as error:
-            print(f"Database not ready yet: {error}")
+            print(f"Database not ready yet: {error}", flush=True)
             time.sleep(3)
 
     raise Exception("Could not connect to database")
@@ -82,6 +91,29 @@ def create_order():
     conn.commit()
     cur.close()
     conn.close()
+
+    if SQS_QUEUE_URL:
+        try:
+            sqs = get_sqs_client()
+
+            message = {
+                "order_id": order["id"],
+                "product_name": order["product_name"],
+                "quantity": order["quantity"]
+            }
+
+            sqs.send_message(
+                QueueUrl=SQS_QUEUE_URL,
+                MessageBody=json.dumps(message)
+            )
+
+            print(f"Message sent to SQS for order {order['id']}", flush=True)
+
+        except Exception as error:
+            print(f"Failed to send message to SQS: {error}", flush=True)
+
+    else:
+        print("SQS_QUEUE_URL not configured. Message not sent.", flush=True)
 
     return jsonify(order), 201
 

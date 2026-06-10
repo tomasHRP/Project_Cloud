@@ -21,6 +21,11 @@ services:
       DB_NAME: cloudapp
       DB_USER: cloudadmin
       DB_PASSWORD: cloudpassword
+      AWS_REGION: us-east-1
+      SQS_QUEUE_URL: "https://sqs.us-east-1.amazonaws.com/796115667133/tomber-cloud-dev-orders-queue"
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
+      AWS_SESSION_TOKEN: ${AWS_SESSION_TOKEN}
     ports:
       - "5001:5001"
     depends_on:
@@ -41,8 +46,21 @@ services:
     build:
       context: ./services/worker-service
     container_name: tomber-worker-service
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: cloudapp
+      DB_USER: cloudadmin
+      DB_PASSWORD: cloudpassword
+      AWS_REGION: us-east-1
+      SQS_QUEUE_URL: "https://sqs.us-east-1.amazonaws.com/796115667133/tomber-cloud-dev-orders-queue"
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
+      AWS_SESSION_TOKEN: ${AWS_SESSION_TOKEN}
     ports:
       - "5002:5002"
+    depends_on:
+      - postgres
 
 volumes:
   postgres_data:
