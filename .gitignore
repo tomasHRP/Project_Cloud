@@ -50,4 +50,4 @@ target/
 
 ### Environment files ###
 .env
-.env.*
+.env.*body.json
