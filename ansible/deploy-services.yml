@@ -40,9 +40,6 @@
         AWS_SESSION_TOKEN: "{{ lookup('env', 'AWS_SESSION_TOKEN') }}"
       no_log: true
 
-    - name: Create Docker network
-      ansible.builtin.shell: docker network create "{{ app_network }}" || true
-
     - name: Write application environment file
       ansible.builtin.copy:
         dest: "{{ app_dir }}/app.env"
@@ -67,7 +64,12 @@
         docker rm -f hello-world || true
 
     - name: Clean unused Docker data
-      ansible.builtin.shell: docker system prune -af || true
+      ansible.builtin.shell: |
+        docker system prune -af || true
+        docker image prune -af || true
+
+    - name: Create Docker network
+      ansible.builtin.shell: docker network create "{{ app_network }}" || true
 
     - name: Pull Docker images
       ansible.builtin.shell: |
