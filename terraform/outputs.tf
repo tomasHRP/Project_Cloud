@@ -43,3 +43,18 @@ output "rds_database_name" {
   description = "RDS database name"
   value       = aws_db_instance.postgres.db_name
 }
+
+output "orders_queue_url" {
+  description = "URL of the orders SQS queue"
+  value       = aws_sqs_queue.orders.url
+}
+
+output "orders_queue_arn" {
+  description = "ARN of the orders SQS queue"
+  value       = aws_sqs_queue.orders.arn
+}
+
+output "orders_dlq_url" {
+  description = "URL of the orders dead-letter queue"
+  value       = aws_sqs_queue.orders_dlq.url
+}

@@ -1,0 +1,95 @@
+name: Production Deploy
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production
+
+    env:
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      AWS_SESSION_TOKEN: ${{ secrets.AWS_SESSION_TOKEN }}
+      AWS_REGION: us-east-1
+      AWS_DEFAULT_REGION: us-east-1
+      TF_VAR_db_password: ${{ secrets.DB_PASSWORD }}
+      AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set image names
+        run: |
+          echo "ECR_REGISTRY=${AWS_ACCOUNT_ID}.dkr.ecr.us-east-1.amazonaws.com" >> "$GITHUB_ENV"
+          echo "API_IMAGE=${AWS_ACCOUNT_ID}.dkr.ecr.us-east-1.amazonaws.com/tomber-api-gateway:latest" >> "$GITHUB_ENV"
+          echo "ORDER_IMAGE=${AWS_ACCOUNT_ID}.dkr.ecr.us-east-1.amazonaws.com/tomber-order-service:latest" >> "$GITHUB_ENV"
+          echo "WORKER_IMAGE=${AWS_ACCOUNT_ID}.dkr.ecr.us-east-1.amazonaws.com/tomber-worker-service:latest" >> "$GITHUB_ENV"
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Terraform init
+        working-directory: terraform
+        run: terraform init
+
+      - name: Terraform apply
+        working-directory: terraform
+        run: terraform apply -auto-approve
+
+      - name: Login to Amazon ECR
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and push api-gateway image
+        run: |
+          docker build -t "$API_IMAGE" services/api-gateway
+          docker push "$API_IMAGE"
+
+      - name: Build and push order-service image
+        run: |
+          docker build -t "$ORDER_IMAGE" services/order-service
+          docker push "$ORDER_IMAGE"
+
+      - name: Build and push worker-service image
+        run: |
+          docker build -t "$WORKER_IMAGE" services/worker-service
+          docker push "$WORKER_IMAGE"
+
+      - name: Install Ansible
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ansible
+
+      - name: Configure SSH key
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s' "${{ secrets.EC2_SSH_KEY_B64 }}" | base64 -d > ~/.ssh/ec2_key.pem
+          chmod 600 ~/.ssh/ec2_key.pem
+          ssh-keygen -y -f ~/.ssh/ec2_key.pem > /dev/null
+          ssh-keyscan -H "${{ secrets.EC2_HOST }}" >> ~/.ssh/known_hosts
+
+      - name: Deploy services with Ansible
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_SESSION_TOKEN: ${{ secrets.AWS_SESSION_TOKEN }}
+          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+          RDS_HOST: ${{ secrets.RDS_HOST }}
+          SQS_QUEUE_URL: ${{ secrets.SQS_QUEUE_URL }}
+        run: |
+          ansible-playbook ansible/deploy-services.yml \
+            -i "${{ secrets.EC2_HOST }}," \
+            -u "${{ secrets.EC2_USER }}" \
+            --private-key ~/.ssh/ec2_key.pem \
+            -e "ecr_registry=$ECR_REGISTRY" \
+            -e "api_image=$API_IMAGE" \
+            -e "order_image=$ORDER_IMAGE" \
+            -e "worker_image=$WORKER_IMAGE"

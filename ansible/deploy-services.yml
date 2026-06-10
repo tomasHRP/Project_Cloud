@@ -1,0 +1,102 @@
+---
+- name: Deploy production services
+  hosts: all
+  become: true
+
+  vars:
+    app_dir: /opt/tomber-cloud
+    app_network: tomber-net
+
+  tasks:
+    - name: Install Docker
+      ansible.builtin.dnf:
+        name: docker
+        state: present
+
+    - name: Start and enable Docker
+      ansible.builtin.service:
+        name: docker
+        state: started
+        enabled: true
+
+    - name: Install AWS CLI
+      ansible.builtin.dnf:
+        name: awscli
+        state: present
+
+    - name: Create application directory
+      ansible.builtin.file:
+        path: "{{ app_dir }}"
+        state: directory
+        mode: "0755"
+
+    - name: Login to Amazon ECR
+      ansible.builtin.shell: |
+        aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin "{{ ecr_registry }}"
+      environment:
+        AWS_ACCESS_KEY_ID: "{{ lookup('env', 'AWS_ACCESS_KEY_ID') }}"
+        AWS_SECRET_ACCESS_KEY: "{{ lookup('env', 'AWS_SECRET_ACCESS_KEY') }}"
+        AWS_SESSION_TOKEN: "{{ lookup('env', 'AWS_SESSION_TOKEN') }}"
+      no_log: true
+
+    - name: Create Docker network
+      ansible.builtin.shell: docker network create "{{ app_network }}" || true
+
+    - name: Write application environment file
+      ansible.builtin.copy:
+        dest: "{{ app_dir }}/app.env"
+        mode: "0600"
+        content: |
+          DB_HOST={{ lookup('env', 'RDS_HOST') }}
+          DB_PORT=5432
+          DB_NAME=cloudapp
+          DB_USER=cloudadmin
+          DB_PASSWORD={{ lookup('env', 'DB_PASSWORD') }}
+          AWS_REGION=us-east-1
+          SQS_QUEUE_URL={{ lookup('env', 'SQS_QUEUE_URL') }}
+          AWS_ACCESS_KEY_ID={{ lookup('env', 'AWS_ACCESS_KEY_ID') }}
+          AWS_SECRET_ACCESS_KEY={{ lookup('env', 'AWS_SECRET_ACCESS_KEY') }}
+          AWS_SESSION_TOKEN={{ lookup('env', 'AWS_SESSION_TOKEN') }}
+
+    - name: Pull Docker images
+      ansible.builtin.shell: |
+        docker pull "{{ api_image }}"
+        docker pull "{{ order_image }}"
+        docker pull "{{ worker_image }}"
+
+    - name: Remove old containers
+      ansible.builtin.shell: |
+        docker rm -f api-gateway || true
+        docker rm -f order-service || true
+        docker rm -f worker-service || true
+        docker rm -f hello-world || true
+
+    - name: Run order-service
+      ansible.builtin.shell: |
+        docker run -d \
+          --name order-service \
+          --restart unless-stopped \
+          --network "{{ app_network }}" \
+          --env-file "{{ app_dir }}/app.env" \
+          -p 5001:5001 \
+          "{{ order_image }}"
+
+    - name: Run worker-service
+      ansible.builtin.shell: |
+        docker run -d \
+          --name worker-service \
+          --restart unless-stopped \
+          --network "{{ app_network }}" \
+          --env-file "{{ app_dir }}/app.env" \
+          -p 5002:5002 \
+          "{{ worker_image }}"
+
+    - name: Run api-gateway
+      ansible.builtin.shell: |
+        docker run -d \
+          --name api-gateway \
+          --restart unless-stopped \
+          --network "{{ app_network }}" \
+          -e ORDER_SERVICE_URL=http://order-service:5001 \
+          -p 80:5000 \
+          "{{ api_image }}"
